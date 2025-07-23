@@ -1,12 +1,13 @@
 use clap::Parser;
+mod preprocess;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// A flag to indicate preparation
+    /// Path to the CSV file to process
     #[arg(short, long)]
-    prepare: bool,
+    prepare: Option<String>,
 
     /// A flag to indicate hashing
     #[arg(short = 'H', long)]
@@ -16,8 +17,11 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    if args.prepare {
-        println!("'--prepare' or '-p' option is provided.");
+    if let Some(path) = args.prepare {
+        println!("'--prepare' or '-p' option is provided with path: {}", path);
+        if let Err(e) = preprocess::preprocess(&path) {
+            eprintln!("Error during preprocessing: {}", e);
+        }
     } else {
         println!("'--prepare' or '-p' option is NOT provided.");
     }
