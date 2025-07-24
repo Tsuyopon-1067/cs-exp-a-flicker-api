@@ -1,4 +1,4 @@
-use crate::models::PhotoData;
+use crate::models::{PhotoData, ResponseData};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use indicatif::{ProgressBar, ProgressIterator};
@@ -94,19 +94,25 @@ fn create_tag_to_photodata_gzip_map(
 
     for (tag, ids) in tag_to_ids.iter() {
         // 各タグに関連付けられたidからPhotoDataを取得
-        let mut photos: Vec<&PhotoData> = ids
+        let mut photos: Vec<PhotoData> = ids
             .iter()
             .filter_map(|id| id_to_photodata.get(id))
+            .cloned()
             .collect();
         // 日付で新しい順（降順）にソート
         photos.sort_by(|a, b| b.date.cmp(&a.date));
         // 100件に切り捨て
         photos.truncate(MAX_PHOTOS_PER_TAG);
-        // PhotoDataをJSON文字列に変換
-        let photos_json = serde_json::to_string(&photos)?;
+        // レスポンスのデータ構造に変換
+        let response_data = ResponseData {
+            tag: tag.clone(),
+            results: photos.clone(),
+        };
+        // レスポンスデータをJSON文字列に変換
+        let response_json = serde_json::to_string(&response_data)?;
         // JSON文字列をGzip圧縮
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(photos_json.as_bytes())?;
+        encoder.write_all(response_json.as_bytes())?;
         let compressed_bytes = encoder.finish()?;
         tag_to_photodata_gzip.insert(tag.clone(), compressed_bytes);
 
