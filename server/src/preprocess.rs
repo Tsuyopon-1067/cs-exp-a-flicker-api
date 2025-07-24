@@ -15,18 +15,20 @@ pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
         id_to_photodata.len()
     );
 
+    let tag_to_photodata_json = create_tag_to_photodata_json_map(&tag_to_ids, &id_to_photodata)?;
+    println!(
+        "Created map with {} tags to photo data json",
+        tag_to_photodata_json.len()
+    );
+
     // "dog" タグで検索
     let search_tag = "dog";
-    if let Some(ids) = tag_to_ids.get(search_tag) {
-        let photos: Vec<&PhotoData> = ids
-            .iter()
-            .filter_map(|id| id_to_photodata.get(id))
-            .collect();
-
-        if photos.is_empty() {
+    if let Some(photos_json) = tag_to_photodata_json.get(search_tag) {
+        if photos_json.is_empty() {
             println!("No photos found for tag '{}'", search_tag);
         } else {
-            let json_output = serde_json::to_string_pretty(&photos)?;
+            // print the JSON array
+            let json_output = serde_json::to_string(photos_json)?;
             println!("Photos for tag '{}':", search_tag);
             println!("{}", json_output);
         }
@@ -78,4 +80,22 @@ fn create_id_to_photodata_map(path: &str) -> Result<HashMap<i64, PhotoData>, Box
     }
 
     Ok(id_to_photodata)
+}
+
+fn create_tag_to_photodata_json_map(
+    tag_to_ids: &HashMap<String, Vec<i64>>,
+    id_to_photodata: &HashMap<i64, PhotoData>,
+) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+    let mut tag_to_photodata_json: HashMap<String, Vec<String>> = HashMap::new();
+
+    for (tag, ids) in tag_to_ids.iter() {
+        let photos_json: Vec<String> = ids
+            .iter()
+            .filter_map(|id| id_to_photodata.get(id))
+            .filter_map(|photodata| serde_json::to_string(photodata).ok())
+            .collect();
+        tag_to_photodata_json.insert(tag.clone(), photos_json);
+    }
+
+    Ok(tag_to_photodata_json)
 }
