@@ -1,4 +1,5 @@
 use clap::Parser;
+mod models;
 mod preprocess;
 
 /// Simple program to greet a person
@@ -6,8 +7,8 @@ mod preprocess;
 #[command(version, about, long_about = None)]
 struct Args {
     /// Path to the CSV file to process
-    #[arg(short, long)]
-    prepare: Option<String>,
+    #[arg(short, long, num_args(2))]
+    prepare: Option<Vec<String>>,
 
     /// A flag to indicate hashing
     #[arg(short = 'H', long)]
@@ -17,9 +18,12 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    if let Some(path) = args.prepare {
-        println!("'--prepare' or '-p' option is provided with path: {}", path);
-        if let Err(e) = preprocess::preprocess(&path) {
+    if let Some(paths) = args.prepare {
+        println!(
+            "'--prepare' or '-p' option is provided with paths: {} and {}",
+            &paths[0], &paths[1]
+        );
+        if let Err(e) = preprocess::preprocess(&paths[0], &paths[1]) {
             eprintln!("Error during preprocessing: {}", e);
         }
     } else {

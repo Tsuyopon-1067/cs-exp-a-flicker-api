@@ -1,26 +1,36 @@
-use std::collections::HashSet;
+use indicatif::{ProgressBar, ProgressIterator};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 
-pub fn preprocess(path: &str) -> Result<(), Box<dyn Error>> {
-    process_csv(path)?;
+pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
+    println!("Preprocessing with {} and {}", path1, path2);
+    let tag_to_ids = create_tag_to_ids_map(path1)?;
+    println!("Created map with {} unique tags", tag_to_ids.len());
     Ok(())
 }
 
-fn process_csv(path: &str) -> Result<(), Box<dyn Error>> {
+fn count_lines(path: &str) -> Result<u64, std::io::Error> {
     let file = File::open(path)?;
-    let mut rdr = csv::Reader::from_reader(file);
-    let mut tags = HashSet::new();
+    let reader = BufReader::new(file);
+    Ok(reader.lines().count() as u64)
+}
 
-    for result in rdr.records() {
-        let record = result?;
-        if let Some(tag) = record.get(1) {
-            tags.insert(tag.to_string());
-        }
+fn create_tag_to_ids_map(path: &str) -> Result<HashMap<String, Vec<i64>>, Box<dyn Error>> {
+    let num_lines = count_lines(path)?;
+    let file = File::open(path)?;
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(file);
+
+    let mut tag_to_ids: HashMap<String, Vec<i64>> = HashMap::new();
+    let pb = ProgressBar::new(num_lines);
+
+    for result in rdr.deserialize().progress_with(pb) {
+        let (id, tag): (i64, String) = result?;
+        tag_to_ids.entry(tag).or_default().push(id);
     }
 
-    let unique_tags: Vec<String> = tags.into_iter().collect();
-    println!("Unique tags: {:?}", unique_tags.len());
-
-    Ok(())
+    Ok(tag_to_ids)
 }
