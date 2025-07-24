@@ -35,6 +35,12 @@ $ ./server -p tag.csv geotag.csv
 
 ### サーバ
 
+HTTP/2接続のための自己署名SSL/TLS証明書を生成します．`<IP_ADDRESS>`はサーバのIPアドレス（`xx.xx.xx.xx`）を入力します．ポート番号は不要です．
+```bash
+$ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/C=JP/ST=Tokyo/L=Chiyoda/O=Example Inc./OU=IT/CN=<IP_ADDRESS>"
+```
+
+あとはサーバを起動するだけです．
 ```bash
 $ ./server
 ```
