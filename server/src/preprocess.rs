@@ -14,6 +14,26 @@ pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
         "Created map with {} photo data entries",
         id_to_photodata.len()
     );
+
+    // "dog" タグで検索
+    let search_tag = "dog";
+    if let Some(ids) = tag_to_ids.get(search_tag) {
+        let photos: Vec<&PhotoData> = ids
+            .iter()
+            .filter_map(|id| id_to_photodata.get(id))
+            .collect();
+
+        if photos.is_empty() {
+            println!("No photos found for tag '{}'", search_tag);
+        } else {
+            let json_output = serde_json::to_string_pretty(&photos)?;
+            println!("Photos for tag '{}':", search_tag);
+            println!("{}", json_output);
+        }
+    } else {
+        println!("Tag '{}' not found.", search_tag);
+    }
+
     Ok(())
 }
 
