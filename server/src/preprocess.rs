@@ -1,9 +1,11 @@
 use crate::models::PhotoData;
+use flate2::Compression;
+use flate2::write::GzEncoder;
 use indicatif::{ProgressBar, ProgressIterator};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 
 const MAX_PHOTOS_PER_TAG: usize = 100;
 
@@ -17,22 +19,23 @@ pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
         id_to_photodata.len()
     );
 
-    let tag_to_photodata_json = create_tag_to_photodata_json_map(&tag_to_ids, &id_to_photodata)?;
+    let tag_to_photodata_gzip = create_tag_to_photodata_gzip_map(&tag_to_ids, &id_to_photodata)?;
     println!(
-        "Created map with {} tags to photo data json",
-        tag_to_photodata_json.len()
+        "Created map with {} tags to photo data gzip",
+        tag_to_photodata_gzip.len()
     );
 
     // "dog" タグで検索
     let search_tag = "dog";
-    if let Some(photos_json) = tag_to_photodata_json.get(search_tag) {
-        if photos_json.is_empty() {
+    if let Some(photos_gzip) = tag_to_photodata_gzip.get(search_tag) {
+        if photos_gzip.is_empty() {
             println!("No photos found for tag '{}'", search_tag);
         } else {
-            // print the JSON array
-            let json_output = serde_json::to_string(photos_json)?;
-            println!("Photos for tag '{}':", search_tag);
-            println!("{}", json_output);
+            println!(
+                "Compressed photos for tag '{}' are {} bytes",
+                search_tag,
+                photos_gzip.len()
+            );
         }
     } else {
         println!("Tag '{}' not found.", search_tag);
@@ -84,11 +87,21 @@ fn create_id_to_photodata_map(path: &str) -> Result<HashMap<i64, PhotoData>, Box
     Ok(id_to_photodata)
 }
 
-fn create_tag_to_photodata_json_map(
+fn create_tag_to_photodata_gzip_map(
     tag_to_ids: &HashMap<String, Vec<i64>>,
     id_to_photodata: &HashMap<i64, PhotoData>,
-) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
-    let mut tag_to_photodata_json: HashMap<String, Vec<String>> = HashMap::new();
+) -> Result<HashMap<String, Vec<u8>>, Box<dyn Error>> {
+    let mut tag_to_photodata_gzip: HashMap<String, Vec<u8>> = HashMap::new();
+
+    let pb = ProgressBar::new(tag_to_ids.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+            )
+            .unwrap()
+            .progress_chars("#>-"),
+    );
 
     for (tag, ids) in tag_to_ids.iter() {
         // 各タグに関連付けられたidからPhotoDataを取得
@@ -96,21 +109,21 @@ fn create_tag_to_photodata_json_map(
             .iter()
             .filter_map(|id| id_to_photodata.get(id))
             .collect();
-
         // 日付で新しい順（降順）にソート
         photos.sort_by(|a, b| b.date.cmp(&a.date));
-
         // 100件に切り捨て
         photos.truncate(MAX_PHOTOS_PER_TAG);
-
         // PhotoDataをJSON文字列に変換
-        let photos_json: Vec<String> = photos
-            .iter()
-            .filter_map(|photodata| serde_json::to_string(photodata).ok())
-            .collect();
+        let photos_json = serde_json::to_string(&photos)?;
+        // JSON文字列をGzip圧縮
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(photos_json.as_bytes())?;
+        let compressed_bytes = encoder.finish()?;
+        tag_to_photodata_gzip.insert(tag.clone(), compressed_bytes);
 
-        tag_to_photodata_json.insert(tag.clone(), photos_json);
+        pb.inc(1);
     }
 
-    Ok(tag_to_photodata_json)
+    pb.finish_with_message("完了");
+    Ok(tag_to_photodata_gzip)
 }
