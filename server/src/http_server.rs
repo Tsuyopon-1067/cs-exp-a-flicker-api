@@ -1,18 +1,14 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use flate2::Compression;
-use flate2::write::GzEncoder;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server, StatusCode};
 use local_ip_address::local_ip;
 use url::Url;
-
-use crate::models::PhotoData;
 
 type TagPhotoDataGzipMap = HashMap<String, Vec<u8>>;
 
