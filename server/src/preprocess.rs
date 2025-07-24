@@ -72,7 +72,7 @@ fn create_id_to_photodata_map(path: &str) -> Result<HashMap<i64, PhotoData>, Box
 
     for result in rdr.deserialize() {
         let (id, date, lat, lon, url): (i64, String, f64, f64, String) = result?;
-        let photodata: PhotoData = PhotoData::new(&date, lat, lon, &url)?;
+        let photodata: PhotoData = PhotoData::new(lat, lon, &date, &url)?;
         id_to_photodata.insert(id, photodata);
         pb.inc(1);
     }
