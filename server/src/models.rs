@@ -2,15 +2,15 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PhotoData {
+    pub lat: f64,
+    pub lon: f64,
     #[serde(
         deserialize_with = "deserialize_datetime",
         serialize_with = "serialize_datetime_as_string"
     )]
     pub date: DateTime<Utc>,
-    pub lat: f64,
-    pub lon: f64,
     pub url: String,
 }
 
@@ -35,14 +35,20 @@ where
 }
 
 impl PhotoData {
-    pub fn new(date_str: &str, lat: f64, lon: f64, url: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new(lat: f64, lon: f64, date_str: &str, url: &str) -> Result<Self, Box<dyn Error>> {
         let naive_dt = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S")?;
         let date = DateTime::from_naive_utc_and_offset(naive_dt, Utc);
         Ok(PhotoData {
-            date,
             lat,
             lon,
+            date,
             url: url.to_string(),
         })
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResponseData {
+    pub tag: String,
+    pub results: Vec<PhotoData>,
 }

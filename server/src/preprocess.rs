@@ -1,7 +1,8 @@
-use crate::models::PhotoData;
+use crate::models::{PhotoData, ResponseData};
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use indicatif::{ProgressBar, ProgressIterator};
+use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
@@ -49,10 +50,12 @@ fn create_tag_to_ids_map(path: &str) -> Result<HashMap<String, Vec<i64>>, Box<dy
     let mut tag_to_ids: HashMap<String, Vec<i64>> = HashMap::new();
     let pb = ProgressBar::new(num_lines);
 
-    for result in rdr.deserialize().progress_with(pb) {
+    for result in rdr.deserialize() {
         let (id, tag): (i64, String) = result?;
         tag_to_ids.entry(tag).or_default().push(id);
+        pb.inc(1);
     }
+    pb.finish_with_message("完了");
 
     Ok(tag_to_ids)
 }
@@ -67,11 +70,13 @@ fn create_id_to_photodata_map(path: &str) -> Result<HashMap<i64, PhotoData>, Box
     let mut id_to_photodata: HashMap<i64, PhotoData> = HashMap::new();
     let pb = ProgressBar::new(num_lines);
 
-    for result in rdr.deserialize().progress_with(pb) {
+    for result in rdr.deserialize() {
         let (id, date, lat, lon, url): (i64, String, f64, f64, String) = result?;
-        let photodata: PhotoData = PhotoData::new(&date, lat, lon, &url)?;
+        let photodata: PhotoData = PhotoData::new(lat, lon, &date, &url)?;
         id_to_photodata.insert(id, photodata);
+        pb.inc(1);
     }
+    pb.finish_with_message("完了");
 
     Ok(id_to_photodata)
 }
@@ -80,11 +85,9 @@ fn create_tag_to_photodata_gzip_map(
     tag_to_ids: &HashMap<String, Vec<i64>>,
     id_to_photodata: &HashMap<i64, PhotoData>,
 ) -> Result<HashMap<String, Vec<u8>>, Box<dyn Error>> {
-    let mut tag_to_photodata_gzip: HashMap<String, Vec<u8>> = HashMap::new();
-
     let pb = ProgressBar::new(tag_to_ids.len() as u64);
     pb.set_style(
-        indicatif::ProgressStyle::default_bar()
+        ProgressStyle::default_bar()
             .template(
                 "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
             )
@@ -92,26 +95,35 @@ fn create_tag_to_photodata_gzip_map(
             .progress_chars("#>-"),
     );
 
-    for (tag, ids) in tag_to_ids.iter() {
-        // 各タグに関連付けられたidからPhotoDataを取得
-        let mut photos: Vec<&PhotoData> = ids
-            .iter()
-            .filter_map(|id| id_to_photodata.get(id))
-            .collect();
-        // 日付で新しい順（降順）にソート
-        photos.sort_by(|a, b| b.date.cmp(&a.date));
-        // 100件に切り捨て
-        photos.truncate(MAX_PHOTOS_PER_TAG);
-        // PhotoDataをJSON文字列に変換
-        let photos_json = serde_json::to_string(&photos)?;
-        // JSON文字列をGzip圧縮
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(photos_json.as_bytes())?;
-        let compressed_bytes = encoder.finish()?;
-        tag_to_photodata_gzip.insert(tag.clone(), compressed_bytes);
+    let tag_to_photodata_gzip: HashMap<String, Vec<u8>> = tag_to_ids
+        .par_iter()
+        .map(|(tag, ids)| {
+            // 各タグに関連付けられたidからPhotoDataを取得
+            let mut photos: Vec<PhotoData> = ids
+                .iter()
+                .filter_map(|id| id_to_photodata.get(id))
+                .cloned()
+                .collect();
+            // 日付で新しい順（降順）にソート
+            photos.sort_by(|a, b| b.date.cmp(&a.date));
+            // 100件に切り捨て
+            photos.truncate(MAX_PHOTOS_PER_TAG);
+            // レスポンスのデータ構造に変換
+            let response_data = ResponseData {
+                tag: tag.clone(),
+                results: photos.clone(),
+            };
+            // レスポンスデータをJSON文字列に変換
+            let response_json = serde_json::to_string(&response_data).unwrap();
+            // JSON文字列をGzip圧縮
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(response_json.as_bytes()).unwrap();
+            let compressed_bytes = encoder.finish().unwrap();
 
-        pb.inc(1);
-    }
+            pb.inc(1);
+            (tag.clone(), compressed_bytes)
+        })
+        .collect();
 
     pb.finish_with_message("完了");
     Ok(tag_to_photodata_gzip)
