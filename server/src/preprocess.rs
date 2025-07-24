@@ -5,6 +5,8 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+const MAX_PHOTOS_PER_TAG: usize = 100;
+
 pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
     println!("Preprocessing with {} and {}", path1, path2);
     let tag_to_ids = create_tag_to_ids_map(path1)?;
@@ -89,11 +91,24 @@ fn create_tag_to_photodata_json_map(
     let mut tag_to_photodata_json: HashMap<String, Vec<String>> = HashMap::new();
 
     for (tag, ids) in tag_to_ids.iter() {
-        let photos_json: Vec<String> = ids
+        // 各タグに関連付けられたidからPhotoDataを取得
+        let mut photos: Vec<&PhotoData> = ids
             .iter()
             .filter_map(|id| id_to_photodata.get(id))
+            .collect();
+
+        // 日付で新しい順（降順）にソート
+        photos.sort_by(|a, b| b.date.cmp(&a.date));
+
+        // 100件に切り捨て
+        photos.truncate(MAX_PHOTOS_PER_TAG);
+
+        // PhotoDataをJSON文字列に変換
+        let photos_json: Vec<String> = photos
+            .iter()
             .filter_map(|photodata| serde_json::to_string(photodata).ok())
             .collect();
+
         tag_to_photodata_json.insert(tag.clone(), photos_json);
     }
 
