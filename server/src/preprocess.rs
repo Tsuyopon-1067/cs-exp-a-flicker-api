@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 
 const MAX_PHOTOS_PER_TAG: usize = 100;
+const OUTPUT_PATH: &str = "tag_photodata_map.bin";
 
 pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
     println!("Preprocessing with {} and {}", path1, path2);
@@ -25,21 +26,9 @@ pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
         tag_to_photodata_gzip.len()
     );
 
-    // "dog" タグで検索
-    let search_tag = "dog";
-    if let Some(photos_gzip) = tag_to_photodata_gzip.get(search_tag) {
-        if photos_gzip.is_empty() {
-            println!("No photos found for tag '{}'", search_tag);
-        } else {
-            println!(
-                "Compressed photos for tag '{}' are {} bytes",
-                search_tag,
-                photos_gzip.len()
-            );
-        }
-    } else {
-        println!("Tag '{}' not found.", search_tag);
-    }
+    // マップをストレージに保存
+    save_tag_photodata_map(&tag_to_photodata_gzip)?;
+    println!("Successfully saved tag to photodata map to {}", OUTPUT_PATH);
 
     Ok(())
 }
@@ -126,4 +115,12 @@ fn create_tag_to_photodata_gzip_map(
 
     pb.finish_with_message("完了");
     Ok(tag_to_photodata_gzip)
+}
+
+fn save_tag_photodata_map(map: &HashMap<String, Vec<u8>>) -> Result<(), Box<dyn Error>> {
+    // バイナリ形式でシリアライズして保存
+    let serialized = bincode::serialize(map)?;
+    std::fs::write(OUTPUT_PATH, serialized)?;
+
+    Ok(())
 }
