@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, BufReader, Read};
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Response, Server, StatusCode};
+use hyper::service::service_fn;
+use hyper::{Body, Request, Response, StatusCode};
 use local_ip_address::local_ip;
+use rustls_pemfile::{certs, pkcs8_private_keys};
+use tokio::net::TcpListener;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::{self, Certificate, PrivateKey};
 use url::Url;
 
 type TagPhotoDataGzipMap = HashMap<String, Vec<u8>>;
@@ -57,25 +62,65 @@ async fn handle_request(
     }
 }
 
+fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
+    certs(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid cert"))
+        .map(|mut certs| certs.drain(..).map(Certificate).collect())
+}
+
+fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
+    pkcs8_private_keys(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
+        .map(|mut keys| keys.drain(..).map(PrivateKey).collect())
+}
+
 pub async fn start_server() -> Result<(), Box<dyn std::error::Error>> {
     let port = 8080;
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
+
     println!("Loading tag_photodata_map.bin...");
     let map = Arc::new(load_tag_photodata_map()?);
     println!("tag_photodata_map.bin loaded.");
 
-    let make_svc = make_service_fn(move |_conn| {
-        let map = map.clone();
-        async { Ok::<_, Infallible>(service_fn(move |req| handle_request(req, map.clone()))) }
-    });
+    let certs = load_certs(&PathBuf::from("cert.pem"))?;
+    let mut keys = load_keys(&PathBuf::from("key.pem"))?;
 
-    let server = Server::bind(&addr).serve(make_svc);
+    let mut config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, keys.remove(0))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+    let acceptor = TlsAcceptor::from(Arc::new(config));
+    let listener = TcpListener::bind(&addr).await?;
+
     let my_local_ip = local_ip()?;
-    println!("Listening on http://{}:{}", my_local_ip, port);
+    println!("Listening on https://{}:{}", my_local_ip, port);
 
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+    loop {
+        let (stream, _peer_addr) = listener.accept().await?;
+        let acceptor = acceptor.clone();
+        let map = map.clone();
+
+        let service = service_fn(move |req| handle_request(req, map.clone()));
+
+        tokio::spawn(async move {
+            let stream = match acceptor.accept(stream).await {
+                Ok(stream) => stream,
+                Err(err) => {
+                    eprintln!("Tls error: {:?}", err);
+                    return;
+                }
+            };
+            if let Err(_) = hyper::server::conn::Http::new()
+                .http2_only(true)
+                .serve_connection(stream, service)
+                .await
+            {
+                // eprintln!("Application error: {:?}", err);
+            }
+        });
     }
-
-    Ok(())
 }
