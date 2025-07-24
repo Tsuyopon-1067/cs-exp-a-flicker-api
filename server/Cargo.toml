@@ -4,3 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.4", features = ["derive"] }
+csv = "1.1"
+indicatif = "0.18.0"
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1.0.141"
+flate2 = "1.0"
+bincode = "1.3"
