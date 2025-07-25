@@ -8,7 +8,13 @@ mod preprocess;
 #[command(version, about, long_about = None)]
 struct Args {
     /// Path to the CSV file to process
-    #[arg(short, long, num_args(2))]
+    #[arg(
+        short = 'p',
+        long = "prepare",
+        value_names = ["tag.csv", "geotag.csv"],
+        num_args = 2,
+        help = "CSVファイルを前処理します（tag.csv geotag.csv）"
+    )]
     prepare: Option<Vec<String>>,
 }
 
