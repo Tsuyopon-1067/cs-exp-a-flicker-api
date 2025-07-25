@@ -1,9 +1,9 @@
 use crate::models::{PhotoData, ResponseData};
+use ahash::AHashMap;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -13,14 +13,17 @@ const OUTPUT_PATH: &str = "tag_photodata_map.bin";
 
 pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
     println!("Preprocessing with {} and {}", path1, path2);
+    // tagから[id]へのmapを作成
     let tag_to_ids = create_tag_to_ids_map(path1)?;
     println!("Created map with {} unique tags", tag_to_ids.len());
+    // idからphotodataへのmapを作成
     let id_to_photodata = create_id_to_photodata_map(path2)?;
     println!(
         "Created map with {} photo data entries",
         id_to_photodata.len()
     );
 
+    // 2つのmapを組み合わせて tagからgzip([photodata])へのmapを作成
     let tag_to_photodata_gzip = create_tag_to_photodata_gzip_map(&tag_to_ids, &id_to_photodata)?;
     println!(
         "Created map with {} tags to photo data gzip",
@@ -40,14 +43,14 @@ fn count_lines(path: &str) -> Result<u64, std::io::Error> {
     Ok(reader.lines().count() as u64)
 }
 
-fn create_tag_to_ids_map(path: &str) -> Result<HashMap<String, Vec<i64>>, Box<dyn Error>> {
+fn create_tag_to_ids_map(path: &str) -> Result<AHashMap<String, Vec<i64>>, Box<dyn Error>> {
     let num_lines = count_lines(path)?;
     let file = File::open(path)?;
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
         .from_reader(file);
 
-    let mut tag_to_ids: HashMap<String, Vec<i64>> = HashMap::new();
+    let mut tag_to_ids: AHashMap<String, Vec<i64>> = AHashMap::new();
     let pb = ProgressBar::new(num_lines);
 
     for result in rdr.deserialize() {
@@ -60,14 +63,14 @@ fn create_tag_to_ids_map(path: &str) -> Result<HashMap<String, Vec<i64>>, Box<dy
     Ok(tag_to_ids)
 }
 
-fn create_id_to_photodata_map(path: &str) -> Result<HashMap<i64, PhotoData>, Box<dyn Error>> {
+fn create_id_to_photodata_map(path: &str) -> Result<AHashMap<i64, PhotoData>, Box<dyn Error>> {
     let num_lines = count_lines(path)?;
     let file = File::open(path)?;
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
         .from_reader(file);
 
-    let mut id_to_photodata: HashMap<i64, PhotoData> = HashMap::new();
+    let mut id_to_photodata: AHashMap<i64, PhotoData> = AHashMap::new();
     let pb = ProgressBar::new(num_lines);
 
     for result in rdr.deserialize() {
@@ -82,9 +85,9 @@ fn create_id_to_photodata_map(path: &str) -> Result<HashMap<i64, PhotoData>, Box
 }
 
 fn create_tag_to_photodata_gzip_map(
-    tag_to_ids: &HashMap<String, Vec<i64>>,
-    id_to_photodata: &HashMap<i64, PhotoData>,
-) -> Result<HashMap<String, Vec<u8>>, Box<dyn Error>> {
+    tag_to_ids: &AHashMap<String, Vec<i64>>,
+    id_to_photodata: &AHashMap<i64, PhotoData>,
+) -> Result<AHashMap<String, Vec<u8>>, Box<dyn Error>> {
     let pb = ProgressBar::new(tag_to_ids.len() as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -95,7 +98,7 @@ fn create_tag_to_photodata_gzip_map(
             .progress_chars("#>-"),
     );
 
-    let tag_to_photodata_gzip: HashMap<String, Vec<u8>> = tag_to_ids
+    let tag_to_photodata_gzip: AHashMap<String, Vec<u8>> = tag_to_ids
         .par_iter()
         .map(|(tag, ids)| {
             // 各タグに関連付けられたidからPhotoDataを取得
@@ -123,13 +126,15 @@ fn create_tag_to_photodata_gzip_map(
             pb.inc(1);
             (tag.clone(), compressed_bytes)
         })
+        .collect::<Vec<(String, Vec<u8>)>>()
+        .into_iter()
         .collect();
 
     pb.finish_with_message("完了");
     Ok(tag_to_photodata_gzip)
 }
 
-fn save_tag_photodata_map(map: &HashMap<String, Vec<u8>>) -> Result<(), Box<dyn Error>> {
+fn save_tag_photodata_map(map: &AHashMap<String, Vec<u8>>) -> Result<(), Box<dyn Error>> {
     // バイナリ形式でシリアライズして保存
     let serialized = bincode::serialize(map)?;
     std::fs::write(OUTPUT_PATH, serialized)?;
