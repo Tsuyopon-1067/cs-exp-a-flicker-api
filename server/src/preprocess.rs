@@ -11,13 +11,13 @@ use std::io::{BufRead, BufReader, Write};
 const MAX_PHOTOS_PER_TAG: usize = 100;
 const OUTPUT_PATH: &str = "tag_photodata_map.bin";
 
-pub fn preprocess(path1: &str, path2: &str) -> Result<(), Box<dyn Error>> {
-    println!("Preprocessing with {} and {}", path1, path2);
+pub fn preprocess(tag_path: &str, geotag_path: &str) -> Result<(), Box<dyn Error>> {
+    println!("Preprocessing with {} and {}", tag_path, geotag_path);
     // tagから[id]へのmapを作成
-    let tag_to_ids = create_tag_to_ids_map(path1)?;
+    let tag_to_ids = create_tag_to_ids_map(tag_path)?;
     println!("Created map with {} unique tags", tag_to_ids.len());
     // idからphotodataへのmapを作成
-    let id_to_photodata = create_id_to_photodata_map(path2)?;
+    let id_to_photodata = create_id_to_photodata_map(geotag_path)?;
     println!(
         "Created map with {} photo data entries",
         id_to_photodata.len()
