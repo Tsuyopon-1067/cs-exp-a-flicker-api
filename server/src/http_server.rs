@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::convert::Infallible;
 use std::fs::File;
 use std::io::{self, BufReader, Read};
@@ -15,7 +15,7 @@ use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::{self, Certificate, PrivateKey};
 use url::Url;
 
-type TagPhotoDataGzipMap = HashMap<String, Vec<u8>>;
+type TagPhotoDataGzipMap = AHashMap<String, Vec<u8>>;
 
 fn load_tag_photodata_map() -> Result<TagPhotoDataGzipMap, Box<dyn std::error::Error>> {
     let mut file = File::open("./tag_photodata_map.bin")?;
